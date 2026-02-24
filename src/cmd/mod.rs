@@ -591,6 +591,8 @@ fn last_commit_unix(git: &crate::git::Git, path: &Path) -> Option<i64> {
 
 pub(crate) fn worktree_name_with_config(ctx: &Context, path: &Path) -> Option<String> {
     let worktrees_dir = ctx.repo_root.join(ctx.config.worktrees_dir());
+    let worktrees_dir = worktrees_dir.canonicalize().unwrap_or(worktrees_dir);
+    let path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
     let rel = path.strip_prefix(&worktrees_dir).ok()?;
     Some(rel.to_string_lossy().to_string())
 }
