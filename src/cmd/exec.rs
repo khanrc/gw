@@ -9,17 +9,34 @@ pub fn exec_cmd(ctx: &Context, args: ExecArgs) -> Result<()> {
     let worktrees = ctx.git.worktrees().map_err(crate::git::git_error)?;
     let mut targets = Vec::new();
 
+    let cli_root = args.root;
+    let cli_subdir = args.subdir.clone();
+
     if target_all {
         for wt in worktrees {
             if let Some(name) = super::worktree_name_with_config(ctx, &wt.path) {
-                targets.push((name, wt.path));
+                let dir = super::resolve_worktree_dir(
+                    ctx,
+                    &wt.path,
+                    &name,
+                    cli_root,
+                    cli_subdir.as_deref(),
+                );
+                targets.push((name, dir));
             }
         }
     } else {
         for name in &args.worktrees {
             let wt = super::find_worktree(ctx, name)?
                 .ok_or_else(|| GwError::new(1, "worktree not found"))?;
-            targets.push((name.clone(), wt.path));
+            let dir = super::resolve_worktree_dir(
+                ctx,
+                &wt.path,
+                name,
+                cli_root,
+                cli_subdir.as_deref(),
+            );
+            targets.push((name.clone(), dir));
         }
     }
 

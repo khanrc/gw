@@ -87,6 +87,8 @@ fn run() -> Result<()> {
         Commands::Gc(args) => cmd::gc(&ctx, args),
         Commands::Cd(args) => cmd::cd(&ctx, args),
         Commands::Exec(args) => cmd::exec_cmd(&ctx, args),
+        Commands::Subdir(args) => cmd::subdir(&ctx, args),
+        Commands::Config(args) => cmd::config(&ctx, args),
         Commands::Completion(args) => cmd::completion(args),
         Commands::ShellInit(args) => cmd::shell_init(args),
     }
