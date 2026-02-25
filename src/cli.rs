@@ -195,7 +195,10 @@ pub struct SubdirArgs {
 }
 
 #[derive(Args)]
-pub struct ConfigArgs {}
+pub struct ConfigArgs {
+    #[arg(short = 'e', long = "edit", action = ArgAction::SetTrue)]
+    pub edit: bool,
+}
 
 #[derive(Args)]
 pub struct ShellInitArgs {

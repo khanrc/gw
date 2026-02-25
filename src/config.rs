@@ -70,7 +70,7 @@ impl Config {
         self.defaults
             .branch_prefix
             .clone()
-            .unwrap_or_else(|| "wt/".to_string())
+            .unwrap_or_else(|| "logan/".to_string())
     }
 
     pub fn default_base(&self) -> Option<String> {
