@@ -1,8 +1,8 @@
 mod exec;
 
 use crate::cli::{
-    AddArgs, CdArgs, DelArgs, GcArgs, InfoArgs, ListArgs, LockArgs, NoteArgs, StatusArgs,
-    SyncArgs, UnlockArgs, VerifyArgs, ApplyArgs,
+    AddArgs, CdArgs, ConfigArgs, DelArgs, GcArgs, InfoArgs, ListArgs, LockArgs, NoteArgs,
+    StatusArgs, SubdirArgs, SyncArgs, UnlockArgs, VerifyArgs, ApplyArgs,
 };
 use crate::{Context, GwError, Result};
 use crate::git::{git_error, Worktree};
@@ -52,15 +52,28 @@ pub fn add(ctx: &Context, args: AddArgs) -> Result<()> {
 
     let mut meta = ctx.meta.clone();
     meta.set_created(&name);
+    if let Some(ref subdir) = args.subdir {
+        meta.set_subdir(&name, Some(subdir.trim_start_matches('/').to_string()));
+    }
     meta.save().map_err(|e| GwError::new(1, e.to_string()))?;
 
     if !ctx.quiet {
-        println!(
-            "created: {} (branch: {}, base: {})",
-            path.display(),
-            branch,
-            base
-        );
+        if let Some(ref subdir) = args.subdir {
+            println!(
+                "created: {} (branch: {}, base: {}, subdir: {})",
+                path.display(),
+                branch,
+                base,
+                subdir
+            );
+        } else {
+            println!(
+                "created: {} (branch: {}, base: {})",
+                path.display(),
+                branch,
+                base
+            );
+        }
     }
 
     Ok(())
@@ -335,14 +348,27 @@ pub fn verify(ctx: &Context, args: VerifyArgs) -> Result<()> {
     let wt = find_worktree(ctx, &args.name)?
         .ok_or_else(|| GwError::new(1, "worktree not found"))?;
 
+    let run_dir = resolve_worktree_dir(
+        ctx,
+        &wt.path,
+        &args.name,
+        args.root,
+        args.subdir.as_deref(),
+    );
+
     let mut commands = Vec::new();
-    if wt.path.join("Cargo.toml").exists() {
+    // Check both worktree root and resolved subdir for project files
+    if wt.path.join("Cargo.toml").exists() || run_dir.join("Cargo.toml").exists() {
         commands.push(ctx.config.verify_rust());
     }
-    if wt.path.join("package.json").exists() {
+    if wt.path.join("package.json").exists() || run_dir.join("package.json").exists() {
         commands.push(ctx.config.verify_node());
     }
-    if wt.path.join("pyproject.toml").exists() || wt.path.join("requirements.txt").exists() {
+    if wt.path.join("pyproject.toml").exists()
+        || wt.path.join("requirements.txt").exists()
+        || run_dir.join("pyproject.toml").exists()
+        || run_dir.join("requirements.txt").exists()
+    {
         commands.push(ctx.config.verify_python());
     }
 
@@ -354,7 +380,7 @@ pub fn verify(ctx: &Context, args: VerifyArgs) -> Result<()> {
     }
 
     for cmd in commands {
-        let status = run_shell(&cmd, &wt.path).map_err(|e| GwError::new(3, e))?;
+        let status = run_shell(&cmd, &run_dir).map_err(|e| GwError::new(3, e))?;
         if !status {
             return Err(GwError::new(3, format!("verify failed: {}", cmd)));
         }
@@ -370,6 +396,101 @@ pub fn note(ctx: &Context, args: NoteArgs) -> Result<()> {
     Ok(())
 }
 
+pub fn subdir(ctx: &Context, args: SubdirArgs) -> Result<()> {
+    let mut meta = ctx.meta.clone();
+    if args.unset {
+        meta.set_subdir(&args.name, None);
+        meta.save().map_err(|e| GwError::new(1, e.to_string()))?;
+        if !ctx.quiet {
+            println!("unset subdir for '{}'", args.name);
+        }
+    } else if let Some(path) = args.path {
+        let path = path.trim_start_matches('/').to_string();
+        meta.set_subdir(&args.name, Some(path.clone()));
+        meta.save().map_err(|e| GwError::new(1, e.to_string()))?;
+        if !ctx.quiet {
+            println!("set subdir for '{}': {}", args.name, path);
+        }
+    } else {
+        // Show current subdir
+        let wt_meta = meta.get(&args.name);
+        let meta_subdir = wt_meta.and_then(|m| m.subdir.as_deref());
+        let config_subdir = ctx.config.default_subdir();
+        if let Some(s) = meta_subdir {
+            println!("{} (from: meta.json)", s);
+        } else if let Some(ref s) = config_subdir {
+            println!("{} (from: config default)", s);
+        } else {
+            println!("(none)");
+        }
+    }
+    Ok(())
+}
+
+pub fn config(ctx: &Context, _args: ConfigArgs) -> Result<()> {
+    use crate::config::Config;
+
+    // [defaults]
+    println!("[defaults]");
+    println!(
+        "worktrees_dir = {}",
+        ctx.config.worktrees_dir()
+    );
+    println!(
+        "branch_prefix = {}",
+        ctx.config.branch_prefix()
+    );
+    if let Some(ref base) = ctx.config.default_base() {
+        println!("base = {}", base);
+    }
+    if let Some(ref subdir) = ctx.config.default_subdir() {
+        println!("subdir = {}", subdir);
+    }
+
+    // [gc]
+    println!();
+    println!("[gc]");
+    println!("stale_days = {}", ctx.config.gc_stale_days());
+
+    // [verify]
+    println!();
+    println!("[verify]");
+    println!("rust = {}", ctx.config.verify_rust());
+    println!("node = {}", ctx.config.verify_node());
+    println!("python = {}", ctx.config.verify_python());
+
+    // [worktree subdirs]
+    let meta = ctx.meta.clone();
+    let all = meta.all();
+    let mut has_subdirs = false;
+    for (name, wt_meta) in all {
+        if wt_meta.subdir.is_some() {
+            if !has_subdirs {
+                println!();
+                println!("[worktree subdirs]");
+                has_subdirs = true;
+            }
+            println!(
+                "{} = {}",
+                name,
+                wt_meta.subdir.as_deref().unwrap_or("")
+            );
+        }
+    }
+
+    // Validation
+    let warnings = Config::validate(&ctx.repo_root);
+    if !warnings.is_empty() {
+        println!();
+        println!("warnings:");
+        for w in &warnings {
+            println!("  {}", w);
+        }
+    }
+
+    Ok(())
+}
+
 pub fn info(ctx: &Context, args: InfoArgs) -> Result<()> {
     let meta = ctx.meta.clone();
     if let Some(wt) = meta.get(&args.name) {
@@ -381,6 +502,11 @@ pub fn info(ctx: &Context, args: InfoArgs) -> Result<()> {
             println!("created_at: {}", wt.created_at.clone().unwrap_or_default());
             println!("created_by: {}", wt.created_by.clone().unwrap_or_default());
             println!("last_activity_at: {}", wt.last_activity_at.clone().unwrap_or_default());
+            if let Some(ref subdir) = wt.subdir {
+                println!("subdir: {} (from: meta.json)", subdir);
+            } else if let Some(ref default) = ctx.config.default_subdir() {
+                println!("subdir: {} (from: config default)", default);
+            }
             if !wt.notes.is_empty() {
                 println!("notes:");
                 for note in &wt.notes {
@@ -462,13 +588,19 @@ pub fn gc(ctx: &Context, args: GcArgs) -> Result<()> {
 
 pub fn cd(ctx: &Context, args: CdArgs) -> Result<()> {
     let mut target = ctx.repo_root.clone();
-    if let Some(name) = args.name {
+    if let Some(ref name) = args.name {
         if name == "root" {
             target = ctx.repo_root.clone();
         } else {
-            let wt = find_worktree(ctx, &name)?
+            let wt = find_worktree(ctx, name)?
                 .ok_or_else(|| GwError::new(1, "worktree not found"))?;
-            target = wt.path;
+            target = resolve_worktree_dir(
+                ctx,
+                &wt.path,
+                name,
+                args.root,
+                args.subdir.as_deref(),
+            );
         }
     }
     if args.shell {
@@ -655,6 +787,50 @@ pub(crate) fn find_worktree(ctx: &Context, name: &str) -> Result<Option<Worktree
         }
     }
     Ok(None)
+}
+
+fn resolve_subdir(
+    wt_path: &Path,
+    cli_root: bool,
+    cli_subdir: Option<&str>,
+    meta_subdir: Option<&str>,
+    config_subdir: Option<&str>,
+) -> PathBuf {
+    if cli_root {
+        return wt_path.to_path_buf();
+    }
+    let subdir = cli_subdir
+        .or(meta_subdir)
+        .or(config_subdir);
+    match subdir {
+        Some(s) if !s.is_empty() => {
+            let s = s.trim_start_matches('/');
+            let target = wt_path.join(s);
+            if !target.exists() {
+                eprintln!("warning: subdir '{}' does not exist in {}", s, wt_path.display());
+            }
+            target
+        }
+        _ => wt_path.to_path_buf(),
+    }
+}
+
+pub(crate) fn resolve_worktree_dir(
+    ctx: &Context,
+    wt_path: &Path,
+    wt_name: &str,
+    cli_root: bool,
+    cli_subdir: Option<&str>,
+) -> PathBuf {
+    let meta_subdir = ctx.meta.get(wt_name).and_then(|m| m.subdir.clone());
+    let config_subdir = ctx.config.default_subdir();
+    resolve_subdir(
+        wt_path,
+        cli_root,
+        cli_subdir,
+        meta_subdir.as_deref(),
+        config_subdir.as_deref(),
+    )
 }
 
 fn branch_merged(git: &crate::git::Git, wt: &Worktree, repo_root: &Path) -> bool {
@@ -1019,4 +1195,72 @@ fn expand_home(path: &str) -> std::path::PathBuf {
         }
     }
     std::path::PathBuf::from(path)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resolve_subdir_cli_root_ignores_all() {
+        let dir = PathBuf::from("/tmp/wt");
+        let result = resolve_subdir(&dir, true, Some("services/app"), Some("meta/path"), Some("cfg/path"));
+        assert_eq!(result, PathBuf::from("/tmp/wt"));
+    }
+
+    #[test]
+    fn resolve_subdir_cli_subdir_wins() {
+        let dir = PathBuf::from("/tmp/wt");
+        let result = resolve_subdir(&dir, false, Some("cli/path"), Some("meta/path"), Some("cfg/path"));
+        assert_eq!(result, PathBuf::from("/tmp/wt/cli/path"));
+    }
+
+    #[test]
+    fn resolve_subdir_meta_wins_over_config() {
+        let dir = PathBuf::from("/tmp/wt");
+        let result = resolve_subdir(&dir, false, None, Some("meta/path"), Some("cfg/path"));
+        assert_eq!(result, PathBuf::from("/tmp/wt/meta/path"));
+    }
+
+    #[test]
+    fn resolve_subdir_config_fallback() {
+        let dir = PathBuf::from("/tmp/wt");
+        let result = resolve_subdir(&dir, false, None, None, Some("cfg/path"));
+        assert_eq!(result, PathBuf::from("/tmp/wt/cfg/path"));
+    }
+
+    #[test]
+    fn resolve_subdir_none_returns_root() {
+        let dir = PathBuf::from("/tmp/wt");
+        let result = resolve_subdir(&dir, false, None, None, None);
+        assert_eq!(result, PathBuf::from("/tmp/wt"));
+    }
+
+    #[test]
+    fn resolve_subdir_strips_leading_slash() {
+        let dir = PathBuf::from("/tmp/wt");
+        let result = resolve_subdir(&dir, false, Some("/services/app"), None, None);
+        assert_eq!(result, PathBuf::from("/tmp/wt/services/app"));
+    }
+
+    #[test]
+    fn resolve_subdir_empty_string_returns_root() {
+        let dir = PathBuf::from("/tmp/wt");
+        let result = resolve_subdir(&dir, false, Some(""), None, None);
+        assert_eq!(result, PathBuf::from("/tmp/wt"));
+    }
+
+    #[test]
+    fn meta_json_backward_compat_no_subdir() {
+        let json = r#"{"created_at":"2024-01-01","created_by":"user@host","notes":[],"tags":[]}"#;
+        let meta: crate::meta::WorktreeMeta = serde_json::from_str(json).unwrap();
+        assert!(meta.subdir.is_none());
+    }
+
+    #[test]
+    fn meta_json_with_subdir() {
+        let json = r#"{"created_at":"2024-01-01","subdir":"services/app"}"#;
+        let meta: crate::meta::WorktreeMeta = serde_json::from_str(json).unwrap();
+        assert_eq!(meta.subdir.unwrap(), "services/app");
+    }
 }

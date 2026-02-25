@@ -46,6 +46,8 @@ pub enum Commands {
     Cd(CdArgs),
     #[command(visible_alias = "x")]
     Exec(ExecArgs),
+    Subdir(SubdirArgs),
+    Config(ConfigArgs),
     Completion(CompletionArgs),
     ShellInit(ShellInitArgs),
 }
@@ -59,6 +61,8 @@ pub struct AddArgs {
     pub branch: Option<String>,
     #[arg(long = "path")]
     pub path: Option<String>,
+    #[arg(long = "subdir")]
+    pub subdir: Option<String>,
 }
 
 #[derive(Args)]
@@ -115,6 +119,10 @@ pub struct SyncArgs {
 #[derive(Args)]
 pub struct VerifyArgs {
     pub name: String,
+    #[arg(long = "subdir")]
+    pub subdir: Option<String>,
+    #[arg(long = "root", action = ArgAction::SetTrue)]
+    pub root: bool,
 }
 
 #[derive(Args)]
@@ -149,6 +157,10 @@ pub struct CdArgs {
     pub name: Option<String>,
     #[arg(long = "shell", action = ArgAction::SetTrue)]
     pub shell: bool,
+    #[arg(long = "subdir")]
+    pub subdir: Option<String>,
+    #[arg(long = "root", action = ArgAction::SetTrue)]
+    pub root: bool,
 }
 
 #[derive(Args)]
@@ -161,6 +173,10 @@ pub struct ExecArgs {
     pub parallel: bool,
     #[arg(long = "fail-fast", action = ArgAction::SetTrue)]
     pub fail_fast: bool,
+    #[arg(long = "subdir")]
+    pub subdir: Option<String>,
+    #[arg(long = "root", action = ArgAction::SetTrue)]
+    pub root: bool,
     #[arg(required = true, trailing_var_arg = true)]
     pub cmd: Vec<String>,
 }
@@ -169,6 +185,17 @@ pub struct ExecArgs {
 pub struct CompletionArgs {
     pub shell: Shell,
 }
+
+#[derive(Args)]
+pub struct SubdirArgs {
+    pub name: String,
+    pub path: Option<String>,
+    #[arg(long = "unset", action = ArgAction::SetTrue)]
+    pub unset: bool,
+}
+
+#[derive(Args)]
+pub struct ConfigArgs {}
 
 #[derive(Args)]
 pub struct ShellInitArgs {

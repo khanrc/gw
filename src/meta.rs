@@ -25,6 +25,8 @@ pub struct WorktreeMeta {
     #[serde(default)]
     pub tags: Vec<String>,
     pub last_activity_at: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subdir: Option<String>,
 }
 
 impl MetaStore {
@@ -77,6 +79,11 @@ impl MetaStore {
     pub fn add_note(&mut self, name: &str, text: String) {
         let meta = self.ensure(name);
         meta.notes.push(text);
+    }
+
+    pub fn set_subdir(&mut self, name: &str, subdir: Option<String>) {
+        let meta = self.ensure(name);
+        meta.subdir = subdir;
     }
 
     pub fn remove(&mut self, name: &str) {
