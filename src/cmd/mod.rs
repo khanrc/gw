@@ -427,8 +427,32 @@ pub fn subdir(ctx: &Context, args: SubdirArgs) -> Result<()> {
     Ok(())
 }
 
-pub fn config(ctx: &Context, _args: ConfigArgs) -> Result<()> {
+pub fn config(ctx: &Context, args: ConfigArgs) -> Result<()> {
     use crate::config::Config;
+
+    if args.edit {
+        let config_path = ctx.repo_root.join(".gw").join("config.toml");
+        fs::create_dir_all(config_path.parent().unwrap())
+            .map_err(|e| GwError::new(1, e.to_string()))?;
+        if !config_path.exists() {
+            let default_content = format!(
+                "[defaults]\nworktrees_dir = \"{}\"\nbranch_prefix = \"{}\"\n# subdir = \"services/app\"\n\n[gc]\nstale_days = {}\n",
+                ctx.config.worktrees_dir(),
+                ctx.config.branch_prefix(),
+                ctx.config.gc_stale_days(),
+            );
+            fs::write(&config_path, default_content).map_err(|e| GwError::new(1, e.to_string()))?;
+        }
+        let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
+        let status = Command::new(&editor)
+            .arg(&config_path)
+            .status()
+            .map_err(|e| GwError::new(1, format!("failed to open editor '{}': {}", editor, e)))?;
+        if !status.success() {
+            return Err(GwError::new(1, "editor exited with error"));
+        }
+        return Ok(());
+    }
 
     // [defaults]
     println!("[defaults]");
@@ -451,13 +475,6 @@ pub fn config(ctx: &Context, _args: ConfigArgs) -> Result<()> {
     println!();
     println!("[gc]");
     println!("stale_days = {}", ctx.config.gc_stale_days());
-
-    // [verify]
-    println!();
-    println!("[verify]");
-    println!("rust = {}", ctx.config.verify_rust());
-    println!("node = {}", ctx.config.verify_node());
-    println!("python = {}", ctx.config.verify_python());
 
     // [worktree subdirs]
     let meta = ctx.meta.clone();

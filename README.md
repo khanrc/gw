@@ -6,6 +6,12 @@ Examples:
 
 ![Examples](screenshot.png)
 
+## Local dev
+
+- Local deploy: `cargo install --path /home/ubuntu/logan/gw`
+    - Build release -> Replacing /root/.cargo/bin/gw
+
+
 ## Install
 
 ### Homebrew
