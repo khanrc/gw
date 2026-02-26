@@ -1,3 +1,8 @@
+> Fork of [golbin/gw](https://github.com/golbin/gw) with:
+> - Monorepo/subdir support — navigate and execute within specific subdirectories per worktree
+> - Improved configurability — `gw config`, `gw subdir`, editable config via `gw config -e`
+> - Autocomplete for `gw cd`
+
 # gw
 
 gw is a cross-platform CLI that wraps `git worktree` for multi-agent/parallel work management.
@@ -20,20 +25,20 @@ Examples:
 ### Homebrew
 
 ```bash
-brew install golbin/tap/gw
+brew install khanrc/tap/gw
 ```
 
 ### Scoop
 
 ```powershell
-scoop bucket add golbin https://github.com/golbin/scoop-bucket
+scoop bucket add khanrc https://github.com/khanrc/scoop-bucket
 scoop install gw
 ```
 
 ### install.sh (macOS/Linux)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/golbin/gw/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/khanrc/gw/main/install.sh | bash
 ```
 
 ## Quick start
