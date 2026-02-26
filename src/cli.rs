@@ -50,6 +50,8 @@ pub enum Commands {
     Config(ConfigArgs),
     Completion(CompletionArgs),
     ShellInit(ShellInitArgs),
+    #[command(name = "_complete", hide = true)]
+    Complete_(CompleteTypeArgs),
 }
 
 #[derive(Args)]
@@ -198,6 +200,12 @@ pub struct SubdirArgs {
 pub struct ConfigArgs {
     #[arg(short = 'e', long = "edit", action = ArgAction::SetTrue)]
     pub edit: bool,
+}
+
+#[derive(Args)]
+pub struct CompleteTypeArgs {
+    #[arg(value_parser = ["worktrees"])]
+    pub comp_type: String,
 }
 
 #[derive(Args)]

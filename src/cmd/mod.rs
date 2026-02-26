@@ -1,8 +1,8 @@
 mod exec;
 
 use crate::cli::{
-    AddArgs, CdArgs, ConfigArgs, DelArgs, GcArgs, InfoArgs, ListArgs, LockArgs, NoteArgs,
-    StatusArgs, SubdirArgs, SyncArgs, UnlockArgs, VerifyArgs, ApplyArgs,
+    AddArgs, ApplyArgs, CdArgs, ConfigArgs, DelArgs, GcArgs, InfoArgs, ListArgs, LockArgs,
+    NoteArgs, StatusArgs, SubdirArgs, SyncArgs, UnlockArgs, VerifyArgs,
 };
 use crate::{Context, GwError, Result};
 use crate::git::{git_error, Worktree};
@@ -628,6 +628,22 @@ pub fn cd(ctx: &Context, args: CdArgs) -> Result<()> {
     Ok(())
 }
 
+pub fn complete_(ctx: &Context, args: crate::cli::CompleteTypeArgs) -> Result<()> {
+    match args.comp_type.as_str() {
+        "worktrees" => {
+            println!("root");
+            let worktrees = ctx.git.worktrees().map_err(git_error)?;
+            for wt in worktrees {
+                if let Some(name) = worktree_name_with_config(ctx, &wt.path) {
+                    println!("{}", name);
+                }
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
 pub fn completion(args: crate::cli::CompletionArgs) -> Result<()> {
     use clap::CommandFactory;
     let mut cmd = crate::cli::Cli::command();
@@ -1087,6 +1103,18 @@ fn bash_init() -> String {
         "  fi",
         "}",
         "",
+        "_gw_completions() {",
+        "  local cur=\"${COMP_WORDS[COMP_CWORD]}\"",
+        "  if [ \"$COMP_CWORD\" -eq 1 ]; then",
+        "    COMPREPLY=($(compgen -W 'add new del rm list ls status st apply merge sync sy verify note info show lock lk unlock ul gc cd exec subdir config completion shell-init' -- \"$cur\"))",
+        "  else",
+        "    local words",
+        "    words=\"$(command gw _complete worktrees 2>/dev/null)\"",
+        "    COMPREPLY=($(compgen -W \"$words\" -- \"$cur\"))",
+        "  fi",
+        "}",
+        "complete -F _gw_completions gw",
+        "",
     ]
     .join("\n")
 }
@@ -1103,6 +1131,32 @@ fn fish_init() -> String {
         "  end",
         "end",
         "",
+        "function __gw_worktrees",
+        "  command gw _complete worktrees 2>/dev/null",
+        "end",
+        "",
+        "complete -c gw -f",
+        "complete -c gw -n __fish_use_subcommand -a 'add new a' -d 'Add worktree'",
+        "complete -c gw -n __fish_use_subcommand -a 'del rm d' -d 'Delete worktree'",
+        "complete -c gw -n __fish_use_subcommand -a 'list ls' -d 'List worktrees'",
+        "complete -c gw -n __fish_use_subcommand -a 'status st' -d 'Show status'",
+        "complete -c gw -n __fish_use_subcommand -a 'apply merge ap' -d 'Apply worktree'",
+        "complete -c gw -n __fish_use_subcommand -a 'sync sy' -d 'Sync worktree'",
+        "complete -c gw -n __fish_use_subcommand -a 'verify v' -d 'Verify worktree'",
+        "complete -c gw -n __fish_use_subcommand -a 'note n' -d 'Add note'",
+        "complete -c gw -n __fish_use_subcommand -a 'info show i' -d 'Show info'",
+        "complete -c gw -n __fish_use_subcommand -a 'lock lk' -d 'Lock worktree'",
+        "complete -c gw -n __fish_use_subcommand -a 'unlock ul' -d 'Unlock worktree'",
+        "complete -c gw -n __fish_use_subcommand -a 'gc g' -d 'Garbage collect'",
+        "complete -c gw -n __fish_use_subcommand -a 'cd c' -d 'Change directory'",
+        "complete -c gw -n __fish_use_subcommand -a 'exec x' -d 'Execute command'",
+        "complete -c gw -n __fish_use_subcommand -a 'subdir' -d 'Manage subdir'",
+        "complete -c gw -n __fish_use_subcommand -a 'config' -d 'Show config'",
+        "complete -c gw -n __fish_use_subcommand -a 'completion' -d 'Generate completions'",
+        "complete -c gw -n __fish_use_subcommand -a 'shell-init' -d 'Shell integration'",
+        "complete -c gw -n '__fish_seen_subcommand_from cd c del rm d apply merge ap sync sy verify v note n info show i lock lk unlock ul subdir exec x' -a '(__gw_worktrees)'",
+        "complete -c gw -n '__fish_seen_subcommand_from exec x' -s w -l worktree -a '(__gw_worktrees)'",
+        "",
     ]
     .join("\n")
 }
@@ -1116,6 +1170,22 @@ fn powershell_init() -> String {
         "    if ($LASTEXITCODE -eq 0) { Set-Location $target }",
         "  } else {",
         "    & gw.exe @Args",
+        "  }",
+        "}",
+        "",
+        "Register-ArgumentCompleter -CommandName gw -ScriptBlock {",
+        "  param($wordToComplete, $commandAst, $cursorPosition)",
+        "  $subcmds = @('add','new','del','rm','list','ls','status','st','apply','merge','sync','sy','verify','note','info','show','lock','lk','unlock','ul','gc','cd','exec','subdir','config','completion','shell-init')",
+        "  $tokens = $commandAst.ToString() -split '\\s+'",
+        "  if ($tokens.Count -le 2) {",
+        "    $subcmds | Where-Object { $_ -like \"$wordToComplete*\" } | ForEach-Object {",
+        "      [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)",
+        "    }",
+        "  } else {",
+        "    $names = & gw.exe _complete worktrees 2>$null",
+        "    $names | Where-Object { $_ -like \"$wordToComplete*\" } | ForEach-Object {",
+        "      [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)",
+        "    }",
         "  }",
         "}",
         "",

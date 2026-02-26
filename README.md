@@ -9,7 +9,10 @@ Examples:
 ## Local dev
 
 - Local deploy: `cargo install --path /home/ubuntu/logan/gw`
-    - Build release -> Replacing /root/.cargo/bin/gw
+    - Build release -> Replacing `/root/.cargo/bin/gw`
+- Shell integration for `gw cd`: `gw shell-init --install`
+- Apply for current session
+    - `gw shell-init fish | source`
 
 
 ## Install
