@@ -91,5 +91,6 @@ fn run() -> Result<()> {
         Commands::Config(args) => cmd::config(&ctx, args),
         Commands::Completion(args) => cmd::completion(args),
         Commands::ShellInit(args) => cmd::shell_init(args),
+        Commands::Complete_(args) => cmd::complete_(&ctx, args),
     }
 }
