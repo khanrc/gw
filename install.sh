@@ -37,7 +37,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -z "$VERSION" ]]; then
-  VERSION=$(curl -fsSL https://api.github.com/repos/golbin/gw/releases/latest | sed -n 's/.*"tag_name": "\([^"]*\)".*/\1/p')
+  VERSION=$(curl -fsSL https://api.github.com/repos/khanrc/gw/releases/latest | sed -n 's/.*"tag_name": "\([^"]*\)".*/\1/p')
 fi
 
 if [[ -z "$VERSION" ]]; then
@@ -76,7 +76,7 @@ esac
 
 TARGET="$ARCH-$OS"
 ARCHIVE="gw-${VERSION}-${TARGET}.tar.gz"
-BASE_URL="https://github.com/golbin/gw/releases/download/${VERSION}"
+BASE_URL="https://github.com/khanrc/gw/releases/download/${VERSION}"
 
 TMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TMP_DIR"' EXIT

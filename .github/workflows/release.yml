@@ -118,20 +118,20 @@ jobs:
       - name: Checkout tap
         uses: actions/checkout@v4
         with:
-          repository: golbin/homebrew-tap
+          repository: khanrc/homebrew-tap
           token: ${{ secrets.TAP_PUSH_TOKEN }}
           path: tap
       - name: Update formula
         run: |
           VERSION=${GITHUB_REF_NAME}
-          URL="https://github.com/golbin/gw/releases/download/${VERSION}/gw-${VERSION}-x86_64-apple-darwin.tar.gz"
-          SHA=$(curl -fsSL "https://github.com/golbin/gw/releases/download/${VERSION}/SHA256SUMS" | grep "gw-${VERSION}-x86_64-apple-darwin.tar.gz" | awk '{print $1}')
+          URL="https://github.com/khanrc/gw/releases/download/${VERSION}/gw-${VERSION}-x86_64-apple-darwin.tar.gz"
+          SHA=$(curl -fsSL "https://github.com/khanrc/gw/releases/download/${VERSION}/SHA256SUMS" | grep "gw-${VERSION}-x86_64-apple-darwin.tar.gz" | awk '{print $1}')
           mkdir -p tap/Formula
           if [ ! -f tap/Formula/gw.rb ]; then
             printf "%s\n" \
               "class Gw < Formula" \
               "  desc \"git worktree helper\"" \
-              "  homepage \"https://github.com/golbin/gw\"" \
+              "  homepage \"https://github.com/khanrc/gw\"" \
               "  version \"${VERSION#v}\"" \
               "  url \"${URL}\"" \
               "  sha256 \"${SHA}\"" \
@@ -163,21 +163,21 @@ jobs:
       - name: Checkout bucket
         uses: actions/checkout@v4
         with:
-          repository: golbin/scoop-bucket
+          repository: khanrc/scoop-bucket
           token: ${{ secrets.SCOOP_PUSH_TOKEN }}
           path: bucket
       - name: Update manifest
         run: |
           VERSION=${GITHUB_REF_NAME}
-          URL="https://github.com/golbin/gw/releases/download/${VERSION}/gw-${VERSION}-x86_64-pc-windows-msvc.zip"
-          SHA=$(curl -fsSL "https://github.com/golbin/gw/releases/download/${VERSION}/SHA256SUMS" | grep "gw-${VERSION}-x86_64-pc-windows-msvc.zip" | awk '{print $1}')
+          URL="https://github.com/khanrc/gw/releases/download/${VERSION}/gw-${VERSION}-x86_64-pc-windows-msvc.zip"
+          SHA=$(curl -fsSL "https://github.com/khanrc/gw/releases/download/${VERSION}/SHA256SUMS" | grep "gw-${VERSION}-x86_64-pc-windows-msvc.zip" | awk '{print $1}')
           mkdir -p bucket/bucket
           if [ ! -f bucket/bucket/gw.json ]; then
             printf "%s\n" \
               "{" \
               "  \"version\": \"${VERSION#v}\"," \
               "  \"description\": \"git worktree helper\"," \
-              "  \"homepage\": \"https://github.com/golbin/gw\"," \
+              "  \"homepage\": \"https://github.com/khanrc/gw\"," \
               "  \"license\": \"MIT\"," \
               "  \"url\": \"${URL}\"," \
               "  \"hash\": \"${SHA}\"," \
