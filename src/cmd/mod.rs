@@ -604,10 +604,16 @@ pub fn gc(ctx: &Context, args: GcArgs) -> Result<()> {
 }
 
 pub fn cd(ctx: &Context, args: CdArgs) -> Result<()> {
-    let mut target = ctx.repo_root.clone();
+    let mut target = resolve_subdir(
+        &ctx.repo_root,
+        args.root,
+        args.subdir.as_deref(),
+        None,
+        ctx.config.default_subdir().as_deref(),
+    );
     if let Some(ref name) = args.name {
         if name == "root" {
-            target = ctx.repo_root.clone();
+            // already resolved above
         } else {
             let wt = find_worktree(ctx, name)?
                 .ok_or_else(|| GwError::new(1, "worktree not found"))?;
