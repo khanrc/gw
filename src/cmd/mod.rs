@@ -612,9 +612,7 @@ pub fn cd(ctx: &Context, args: CdArgs) -> Result<()> {
         ctx.config.default_subdir().as_deref(),
     );
     if let Some(ref name) = args.name {
-        if name == "root" {
-            // already resolved above
-        } else {
+        if name != "root" {
             let wt = find_worktree(ctx, name)?
                 .ok_or_else(|| GwError::new(1, "worktree not found"))?;
             target = resolve_worktree_dir(
