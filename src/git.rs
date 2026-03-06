@@ -18,14 +18,29 @@ impl Git {
     }
 
     pub fn repo_root(&self) -> Result<PathBuf, String> {
-        let toplevel = self.run(&["rev-parse", "--show-toplevel"])?;
+        // If CWD doesn't exist (e.g. deleted worktree), find a valid ancestor
+        // and run git from there instead.
+        let fallback_dir = match std::env::current_dir() {
+            Ok(cwd) if cwd.exists() => None,
+            _ => find_existing_ancestor(),
+        };
+
+        let (toplevel, common) = if let Some(ref dir) = fallback_dir {
+            let t = self.run_in(dir, &["rev-parse", "--show-toplevel"])?;
+            let c = self.run_in(dir, &["rev-parse", "--git-common-dir"])?;
+            (t, c)
+        } else {
+            let t = self.run(&["rev-parse", "--show-toplevel"])?;
+            let c = self.run(&["rev-parse", "--git-common-dir"])?;
+            (t, c)
+        };
+
         let toplevel_path = PathBuf::from(toplevel.trim());
-        let common = self.run(&["rev-parse", "--git-common-dir"])?;
         let mut common_path = PathBuf::from(common.trim());
         if common_path.is_relative() {
             // --git-common-dir returns a path relative to CWD, not toplevel
-            let cwd = std::env::current_dir()
-                .map_err(|e| format!("failed to get current directory: {}", e))?;
+            let cwd = fallback_dir.or_else(|| std::env::current_dir().ok())
+                .ok_or_else(|| "failed to get current directory".to_string())?;
             common_path = cwd.join(common_path);
         }
         common_path = common_path.canonicalize().unwrap_or(common_path);
@@ -137,6 +152,23 @@ impl Git {
 
 pub fn git_error(msg: impl Into<String>) -> GwError {
     GwError::new(2, msg)
+}
+
+/// When CWD has been deleted (e.g. after removing a worktree), walk up the
+/// path to find the first ancestor directory that still exists on disk.
+/// On macOS, current_dir() fails when CWD is deleted, so we fall back to
+/// the PWD environment variable which the shell preserves.
+fn find_existing_ancestor() -> Option<PathBuf> {
+    let cwd = std::env::current_dir()
+        .ok()
+        .or_else(|| std::env::var("PWD").ok().map(PathBuf::from))?;
+    let mut dir = cwd.as_path();
+    loop {
+        if dir.exists() {
+            return Some(dir.to_path_buf());
+        }
+        dir = dir.parent()?;
+    }
 }
 
 fn root_from_common_dir(common: &Path) -> Option<PathBuf> {
