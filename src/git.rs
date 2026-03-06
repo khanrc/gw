@@ -1,6 +1,7 @@
 use crate::GwError;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::OnceLock;
 
 #[derive(Clone)]
 pub struct Git;
@@ -24,7 +25,7 @@ impl Git {
         let mut common_path = PathBuf::from(common.trim());
         if common_path.is_relative() {
             // --git-common-dir returns a path relative to CWD, not toplevel
-            let cwd = find_existing_cwd()
+            let cwd = cwd_fallback()
                 .or_else(|| std::env::current_dir().ok())
                 .ok_or_else(|| "failed to get current directory".to_string())?;
             common_path = cwd.join(common_path);
@@ -42,7 +43,7 @@ impl Git {
     pub fn run(&self, args: &[&str]) -> Result<String, String> {
         let mut cmd = Command::new("git");
         // If CWD doesn't exist (deleted worktree), run from a valid ancestor
-        if let Some(dir) = find_existing_cwd() {
+        if let Some(dir) = cwd_fallback() {
             cmd.current_dir(dir);
         }
         let output = cmd
@@ -145,18 +146,21 @@ pub fn git_error(msg: impl Into<String>) -> GwError {
     GwError::new(2, msg)
 }
 
-/// Returns a valid working directory only when CWD is broken (deleted).
-/// Returns None if CWD is fine (normal case — no overhead).
-fn find_existing_cwd() -> Option<PathBuf> {
-    match std::env::current_dir() {
-        Ok(cwd) if cwd.exists() => None,
-        Ok(cwd) => walk_up_to_existing(&cwd),
-        Err(_) => {
-            // macOS: current_dir() fails when CWD is deleted; use PWD env var
-            let pwd = PathBuf::from(std::env::var("PWD").ok()?);
-            walk_up_to_existing(&pwd)
+/// Returns a valid ancestor directory when CWD is deleted, or None if CWD is fine.
+/// Cached via OnceLock since CWD won't change during a single process invocation.
+fn cwd_fallback() -> Option<PathBuf> {
+    static FALLBACK: OnceLock<Option<PathBuf>> = OnceLock::new();
+    FALLBACK.get_or_init(|| {
+        match std::env::current_dir() {
+            Ok(cwd) if cwd.exists() => None,
+            Ok(cwd) => walk_up_to_existing(&cwd),
+            Err(_) => {
+                // macOS: current_dir() fails when CWD is deleted; use PWD env var
+                let pwd = PathBuf::from(std::env::var("PWD").ok()?);
+                walk_up_to_existing(&pwd)
+            }
         }
-    }
+    }).clone()
 }
 
 fn walk_up_to_existing(path: &Path) -> Option<PathBuf> {
