@@ -7,6 +7,7 @@ use crate::cli::{
 use crate::{Context, GwError, Result};
 use crate::git::{git_error, Worktree};
 use chrono::{DateTime, Utc};
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -76,7 +77,199 @@ pub fn add(ctx: &Context, args: AddArgs) -> Result<()> {
         }
     }
 
+    propagate_files(ctx, &path);
+
     Ok(())
+}
+
+/// Propagate untracked files to a new worktree via copy (.worktreeinclude) and symlink ([worktree] link).
+fn propagate_files(ctx: &Context, worktree_path: &Path) {
+    let include_patterns = parse_worktreeinclude(&ctx.repo_root);
+    let link_patterns = ctx.config.worktree_link_patterns();
+
+    if include_patterns.is_empty() && link_patterns.is_empty() {
+        return;
+    }
+
+    let include_files = resolve_patterns(&ctx.repo_root, &include_patterns);
+    let link_files = resolve_patterns(&ctx.repo_root, &link_patterns);
+
+    let link_set: HashSet<&PathBuf> = link_files.iter().collect();
+
+    let mut copied = 0usize;
+    let mut linked = 0usize;
+
+    // Copy files from .worktreeinclude (skip if also in link set)
+    for rel in &include_files {
+        if link_set.contains(rel) {
+            if !ctx.quiet {
+                eprintln!(
+                    "  warn: {} matched both .worktreeinclude and [worktree] link, using symlink",
+                    rel.display()
+                );
+            }
+            continue;
+        }
+        if copy_file(&ctx.repo_root, worktree_path, rel, ctx.verbose) {
+            copied += 1;
+        }
+    }
+
+    // Symlink files from [worktree] link
+    for rel in &link_files {
+        if symlink_file(&ctx.repo_root, worktree_path, rel, ctx.verbose) {
+            linked += 1;
+        }
+    }
+
+    if !ctx.quiet && (copied > 0 || linked > 0) {
+        let mut parts = Vec::new();
+        if copied > 0 {
+            parts.push(format!("{} copied", copied));
+        }
+        if linked > 0 {
+            parts.push(format!("{} symlinked", linked));
+        }
+        println!("  files: {}", parts.join(", "));
+    }
+}
+
+/// Parse .worktreeinclude file (gitignore-style patterns, one per line).
+fn parse_worktreeinclude(repo_root: &Path) -> Vec<String> {
+    let path = repo_root.join(".worktreeinclude");
+    let content = match fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(_) => return Vec::new(),
+    };
+    content
+        .lines()
+        .map(|l| l.trim())
+        .filter(|l| !l.is_empty() && !l.starts_with('#'))
+        .map(|l| l.to_string())
+        .collect()
+}
+
+/// Resolve glob patterns against repo root, returning relative paths of matching files.
+fn resolve_patterns(repo_root: &Path, patterns: &[String]) -> Vec<PathBuf> {
+    let mut results = Vec::new();
+    let root_str = repo_root.to_string_lossy();
+    let options = glob::MatchOptions {
+        case_sensitive: true,
+        require_literal_separator: false,
+        require_literal_leading_dot: false,
+    };
+    for pattern in patterns {
+        let full_pattern = format!("{}/{}", root_str, pattern);
+        let entries = match glob::glob_with(&full_pattern, options) {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        for entry in entries.flatten() {
+            if let Ok(rel) = entry.strip_prefix(repo_root) {
+                results.push(rel.to_path_buf());
+            }
+        }
+    }
+    // Handle directory patterns (trailing / or bare dir names)
+    let mut dir_patterns = Vec::new();
+    for pattern in patterns {
+        let trimmed = pattern.trim_end_matches('/');
+        let dir_path = repo_root.join(trimmed);
+        if dir_path.is_dir() {
+            if let Ok(rel) = dir_path.strip_prefix(repo_root) {
+                if !results.contains(&rel.to_path_buf()) {
+                    dir_patterns.push(rel.to_path_buf());
+                }
+            }
+        }
+    }
+    results.extend(dir_patterns);
+    results.sort();
+    results.dedup();
+    results
+}
+
+/// Copy a single file (preserving directory structure) from repo root to worktree.
+fn copy_file(repo_root: &Path, worktree: &Path, rel: &Path, verbose: bool) -> bool {
+    let src = repo_root.join(rel);
+    let dst = worktree.join(rel);
+    if dst.exists() {
+        return false;
+    }
+    if src.is_dir() {
+        if let Err(e) = copy_dir_recursive(&src, &dst) {
+            eprintln!("  warn: failed to copy dir {}: {}", rel.display(), e);
+            return false;
+        }
+    } else if src.is_file() {
+        if let Some(parent) = dst.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        if let Err(e) = fs::copy(&src, &dst) {
+            eprintln!("  warn: failed to copy {}: {}", rel.display(), e);
+            return false;
+        }
+    } else {
+        return false;
+    }
+    if verbose {
+        eprintln!("  copy: {}", rel.display());
+    }
+    true
+}
+
+fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
+    fs::create_dir_all(dst)?;
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+        if src_path.is_dir() {
+            copy_dir_recursive(&src_path, &dst_path)?;
+        } else {
+            fs::copy(&src_path, &dst_path)?;
+        }
+    }
+    Ok(())
+}
+
+/// Create a symlink from worktree to the original file in repo root.
+fn symlink_file(repo_root: &Path, worktree: &Path, rel: &Path, verbose: bool) -> bool {
+    let src = repo_root.join(rel);
+    let dst = worktree.join(rel);
+    if !src.exists() {
+        eprintln!("  warn: link target not found: {}", rel.display());
+        return false;
+    }
+    if dst.exists() || dst.symlink_metadata().is_ok() {
+        return false;
+    }
+    if let Some(parent) = dst.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    let abs_src = match src.canonicalize() {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("  warn: failed to resolve {}: {}", rel.display(), e);
+            return false;
+        }
+    };
+    #[cfg(unix)]
+    let result = std::os::unix::fs::symlink(&abs_src, &dst);
+    #[cfg(windows)]
+    let result = if abs_src.is_dir() {
+        std::os::windows::fs::symlink_dir(&abs_src, &dst)
+    } else {
+        std::os::windows::fs::symlink_file(&abs_src, &dst)
+    };
+    if let Err(e) = result {
+        eprintln!("  warn: failed to symlink {}: {}", rel.display(), e);
+        return false;
+    }
+    if verbose {
+        eprintln!("  link: {} -> {}", rel.display(), abs_src.display());
+    }
+    true
 }
 
 pub fn del(ctx: &Context, args: DelArgs) -> Result<()> {

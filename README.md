@@ -1,7 +1,9 @@
 > Fork of [golbin/gw](https://github.com/golbin/gw) with:
-> - Monorepo/subdir support — navigate and execute within specific subdirectories per worktree
-> - Improved configurability — `gw config`, `gw subdir`, editable config via `gw config -e`
-> - Autocomplete for `gw cd`
+> - **Monorepo/subdir support** — `gw subdir`, per-worktree subdirectory navigation and execution
+> - **File propagation** — `.worktreeinclude` (copy) and `[worktree] link` (symlink) for untracked files like `.env`, `CLAUDE.local.md`
+> - **Improved configurability** — `gw config`, `gw config -e` (open in `$EDITOR`)
+> - **Autocomplete** for `gw cd`
+> - **Resilient CWD handling** — commands work even from deleted worktree directories
 
 # gw
 
@@ -254,7 +256,41 @@ stale_days = 7
 rust = "cargo test"
 node = "npm test"
 python = "pytest"
+
+[worktree]
+link = [
+    "CLAUDE.local.md",
+    ".claude/settings.local.json",
+    ".claude/skills/",
+]
 ```
+
+### File propagation
+
+When `gw add` creates a worktree, untracked/gitignored files (like `.env` or `CLAUDE.local.md`) are not included. gw supports two mechanisms to propagate these files:
+
+**`.worktreeinclude` (copy)** — create a `.worktreeinclude` file at the repo root listing patterns of files to copy into new worktrees. Uses `.gitignore` syntax. Compatible with Claude Code.
+
+```
+# .worktreeinclude
+.env
+.env.local
+.env.*
+```
+
+**`[worktree] link` (symlink)** — configure glob patterns in `.gw/config.toml` for files that should be symlinked instead of copied. Useful for config that should stay in sync across worktrees.
+
+```toml
+# .gw/config.toml
+[worktree]
+link = [
+    "CLAUDE.local.md",
+    ".claude/settings.local.json",
+    ".claude/skills/",
+]
+```
+
+If a file matches both `.worktreeinclude` and `[worktree] link`, the symlink takes precedence (with a warning).
 
 ### Metadata and locks
 

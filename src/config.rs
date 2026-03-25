@@ -12,6 +12,13 @@ pub struct Config {
     pub gc: GcConfig,
     #[serde(default)]
     pub verify: VerifyConfig,
+    #[serde(default)]
+    pub worktree: WorktreeConfig,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct WorktreeConfig {
+    pub link: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -112,11 +119,15 @@ impl Config {
             .unwrap_or_else(|| "pytest".to_string())
     }
 
+    pub fn worktree_link_patterns(&self) -> Vec<String> {
+        self.worktree.link.clone().unwrap_or_default()
+    }
+
     pub fn validate(repo_root: &Path) -> Vec<String> {
         let mut warnings = Vec::new();
 
         let known_sections: HashSet<&str> =
-            ["defaults", "gc", "verify"].iter().copied().collect();
+            ["defaults", "gc", "verify", "worktree"].iter().copied().collect();
         let known_keys: HashSet<&str> = [
             "defaults.base",
             "defaults.worktrees_dir",
@@ -126,6 +137,7 @@ impl Config {
             "verify.rust",
             "verify.node",
             "verify.python",
+            "worktree.link",
         ]
         .iter()
         .copied()
@@ -228,6 +240,9 @@ fn merge(base: Config, override_cfg: Config) -> Config {
             rust: override_cfg.verify.rust.or(base.verify.rust),
             node: override_cfg.verify.node.or(base.verify.node),
             python: override_cfg.verify.python.or(base.verify.python),
+        },
+        worktree: WorktreeConfig {
+            link: override_cfg.worktree.link.or(base.worktree.link),
         },
     }
 }
